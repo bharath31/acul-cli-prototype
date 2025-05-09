@@ -1,0 +1,1311 @@
+const fs = require('fs-extra');
+const path = require('path');
+const { tailwindConfig, postcssConfig } = require('./tailwind-config');
+const { viteConfig } = require('./vite-config');
+
+async function generateProject(projectName, options) {
+  const projectPath = path.resolve(projectName);
+  
+  // Create project directory
+  await fs.ensureDir(projectPath);
+  
+  // Create project structure
+  await createProjectStructure(projectPath, options);
+  
+  // Generate package.json
+  await generatePackageJson(projectPath, projectName, options);
+  
+  // Generate Vite config
+  await generateViteConfig(projectPath, options);
+  
+  // Generate ACUL config
+  await generateAculConfig(projectPath, options);
+  
+  // Generate Tailwind CSS config files
+  await generateTailwindConfig(projectPath);
+  
+  // Generate UI library setup if selected
+  if (options.uiLibrary !== 'none') {
+    await generateUILibrarySetup(projectPath, options);
+  }
+  
+  // Generate screen components
+  await generateScreenComponents(projectPath, options);
+  
+  // Generate shared components
+  await generateSharedComponents(projectPath, options);
+}
+
+async function createProjectStructure(projectPath, options) {
+  // Create directory structure
+  const dirs = [
+    'src/screens',
+    'src/components',
+    'src/hooks',
+    'src/utils',
+    'src/styles'
+  ];
+  
+  // Create screen directories based on selection
+  if (options.screens.includes('login')) {
+    dirs.push('src/screens/login-id');
+  }
+  
+  if (options.screens.includes('signup')) {
+    dirs.push('src/screens/signup-id');
+  }
+  
+  if (options.screens.includes('password-reset')) {
+    dirs.push('src/screens/password-reset');
+  }
+  
+  if (options.screens.includes('mfa')) {
+    dirs.push('src/screens/mfa');
+  }
+  
+  if (options.screens.includes('passwordless')) {
+    dirs.push('src/screens/passwordless');
+  }
+  
+  if (options.screens.includes('passkey')) {
+    dirs.push('src/screens/passkey-enrollment');
+  }
+  
+  // Create all directories
+  for (const dir of dirs) {
+    await fs.ensureDir(path.join(projectPath, dir));
+  }
+}
+
+async function generatePackageJson(projectPath, projectName, options) {
+  // Base dependencies for all projects
+  const dependencies = {
+    react: '^18.2.0',
+    'react-dom': '^18.2.0',
+    '@auth0/auth0-acul-js': '^0.1.0-beta.4'
+  };
+  
+  // Add UI library dependencies based on selection
+  switch (options.uiLibrary) {
+    case 'shadcn':
+      Object.assign(dependencies, {
+        'class-variance-authority': '^0.6.0',
+        'clsx': '^1.2.1',
+        'tailwind-merge': '^1.13.0',
+        '@radix-ui/react-dialog': '^1.0.4',
+        '@radix-ui/react-slot': '^1.0.2',
+        '@radix-ui/react-label': '^2.0.2',
+        '@radix-ui/react-checkbox': '^1.0.4'
+      });
+      break;
+    case 'radix':
+      Object.assign(dependencies, {
+        '@radix-ui/react-dialog': '^1.0.4',
+        '@radix-ui/react-form': '^0.0.3',
+        '@radix-ui/react-label': '^2.0.2',
+        '@radix-ui/react-checkbox': '^1.0.4',
+        '@radix-ui/react-slot': '^1.0.2'
+      });
+      break;
+    case 'chakra':
+      Object.assign(dependencies, {
+        '@chakra-ui/react': '^2.8.0',
+        '@emotion/react': '^11.11.0',
+        '@emotion/styled': '^11.11.0',
+        'framer-motion': '^10.12.16'
+      });
+      break;
+    case 'mui':
+      Object.assign(dependencies, {
+        '@mui/material': '^5.13.5',
+        '@mui/icons-material': '^5.11.16',
+        '@emotion/react': '^11.11.0',
+        '@emotion/styled': '^11.11.0'
+      });
+      break;
+    case 'mantine':
+      Object.assign(dependencies, {
+        '@mantine/core': '^6.0.13',
+        '@mantine/hooks': '^6.0.13',
+        '@mantine/form': '^6.0.13'
+      });
+      break;
+  }
+  
+  // Set up the package.json
+  const packageJson = {
+    name: projectName,
+    version: '0.1.0',
+    private: true,
+    type: 'module', // Required for Vite
+    scripts: {
+      dev: 'vite', // Standard Vite command
+      'acul:dev': 'vite --mode acul-dev', // Special mode for ACUL development
+      build: 'vite build',
+      preview: 'vite preview',
+      lint: 'eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0'
+    },
+    dependencies,
+    devDependencies: {
+      '@types/react': '^18.0.37',
+      '@types/react-dom': '^18.0.11',
+      '@vitejs/plugin-react': '^4.0.0',
+      'autoprefixer': '^10.4.14',
+      'eslint': '^8.38.0',
+      'eslint-plugin-react': '^7.32.2',
+      'eslint-plugin-react-hooks': '^4.6.0',
+      'eslint-plugin-react-refresh': '^0.3.4',
+      'postcss': '^8.4.24',
+      'prettier': '^2.8.7',
+      'tailwindcss': '^3.3.2',
+      'vite': '^4.3.9'
+    }
+  };
+  
+  await fs.writeJson(path.join(projectPath, 'package.json'), packageJson, { spaces: 2 });
+}
+
+async function generateViteConfig(projectPath, options) {
+  // Create vite.config.js
+  await fs.writeFile(path.join(projectPath, 'vite.config.js'), viteConfig);
+  
+  // Create HTML files for each screen
+  const baseHtml = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/acul-logo.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Auth0 ACUL</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.js"></script>
+  </body>
+</html>`;
+
+  await fs.writeFile(path.join(projectPath, 'index.html'), baseHtml);
+  
+  // Create HTML files for each selected screen
+  if (options.screens.includes('login')) {
+    const loginHtml = baseHtml.replace('/src/index.js', '/src/screens/login-id/index.jsx');
+    await fs.writeFile(path.join(projectPath, 'login-id.html'), loginHtml);
+  }
+  
+  if (options.screens.includes('signup')) {
+    const signupHtml = baseHtml.replace('/src/index.js', '/src/screens/signup-id/index.jsx');
+    await fs.writeFile(path.join(projectPath, 'signup-id.html'), signupHtml);
+  }
+  
+  if (options.screens.includes('password-reset')) {
+    const resetHtml = baseHtml.replace('/src/index.js', '/src/screens/password-reset/index.jsx');
+    await fs.writeFile(path.join(projectPath, 'password-reset.html'), resetHtml);
+  }
+  
+  if (options.screens.includes('mfa')) {
+    const mfaHtml = baseHtml.replace('/src/index.js', '/src/screens/mfa/index.jsx');
+    await fs.writeFile(path.join(projectPath, 'mfa.html'), mfaHtml);
+  }
+  
+  if (options.screens.includes('passwordless')) {
+    const passwordlessHtml = baseHtml.replace('/src/index.js', '/src/screens/passwordless/index.jsx');
+    await fs.writeFile(path.join(projectPath, 'passwordless.html'), passwordlessHtml);
+  }
+  
+  if (options.screens.includes('passkey')) {
+    const passkeyHtml = baseHtml.replace('/src/index.js', '/src/screens/passkey-enrollment/index.jsx');
+    await fs.writeFile(path.join(projectPath, 'passkey-enrollment.html'), passkeyHtml);
+  }
+  
+  // Create a .env file for mode configuration
+  const envContent = `# Auth0 ACUL Configuration
+# Use this file to configure your Auth0 tenant settings
+# For local development with mock data, run with npm run acul:dev
+
+# Auth0 Tenant Information
+VITE_AUTH0_DOMAIN=your-tenant.auth0.com
+VITE_AUTH0_CLIENT_ID=your-client-id
+
+# ACUL Mock Mode
+VITE_ACUL_MOCK=${options.localDev ? 'true' : 'false'}
+`;
+  
+  await fs.writeFile(path.join(projectPath, '.env'), envContent);
+  
+  // Create public folder with logo
+  await fs.ensureDir(path.join(projectPath, 'public'));
+  
+  // Create an SVG logo for the project
+  const logoSvg = `<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="64" height="64" rx="8" fill="#EB5424"/>
+    <path d="M32 16L16 48H48L32 16Z" fill="white"/>
+  </svg>`;
+  
+  await fs.writeFile(path.join(projectPath, 'public', 'acul-logo.svg'), logoSvg);
+}
+
+async function generateUILibrarySetup(projectPath, options) {
+  // Create UI library specific configuration and boilerplate
+  const uiLibPath = path.join(projectPath, 'src', 'ui');
+  await fs.ensureDir(uiLibPath);
+  
+  switch (options.uiLibrary) {
+    case 'shadcn':
+      // Add shadcn/ui setup files
+      const shadcnUtilsContent = `import { clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs) {
+  return twMerge(clsx(inputs));
+}`;
+      
+      await fs.writeFile(path.join(uiLibPath, 'utils.js'), shadcnUtilsContent);
+      
+      // Add a sample button component
+      const shadcnButtonContent = `import React from 'react';
+import { cva } from 'class-variance-authority';
+import { cn } from '../utils';
+
+const buttonVariants = cva(
+  'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50',
+  {
+    variants: {
+      variant: {
+        default: 'bg-blue-600 text-white hover:bg-blue-700',
+        secondary: 'bg-gray-200 text-gray-900 hover:bg-gray-300',
+        destructive: 'bg-red-600 text-white hover:bg-red-700',
+        outline: 'border border-gray-300 bg-transparent hover:bg-gray-100',
+        ghost: 'hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800 dark:hover:text-gray-50',
+        link: 'text-blue-600 underline-offset-4 hover:underline',
+      },
+      size: {
+        default: 'h-10 py-2 px-4',
+        sm: 'h-9 px-3 rounded-md',
+        lg: 'h-11 px-8 rounded-md',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
+    },
+  }
+);
+
+function Button({ className, variant, size, as, ...props }) {
+  const Comp = as || 'button';
+  return (
+    <Comp
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  );
+}
+
+export { Button, buttonVariants };`;
+      
+      await fs.ensureDir(path.join(uiLibPath, 'button'));
+      await fs.writeFile(path.join(uiLibPath, 'button', 'index.js'), shadcnButtonContent);
+      break;
+      
+    case 'radix':
+      // Add Radix UI setup
+      const radixButtonContent = `import React from 'react';
+import * as RadixSlot from '@radix-ui/react-slot';
+
+const Button = React.forwardRef(({ asChild, className, variant, size, ...props }, ref) => {
+  const Comp = asChild ? RadixSlot.Slot : 'button';
+  return (
+    <Comp
+      className={\`px-4 py-2 rounded-md font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 
+        \${variant === 'primary' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-900 hover:bg-gray-300'} 
+        \${size === 'sm' ? 'text-sm' : size === 'lg' ? 'text-lg px-6 py-3' : 'text-base'}\`}
+      ref={ref}
+      {...props}
+    />
+  );
+});
+
+Button.displayName = 'Button';
+
+export { Button };`;
+      
+      await fs.ensureDir(path.join(uiLibPath, 'button'));
+      await fs.writeFile(path.join(uiLibPath, 'button', 'index.js'), radixButtonContent);
+      break;
+      
+    case 'chakra':
+      // Add Chakra UI setup
+      const chakraProviderContent = `import React from 'react';
+import { ChakraProvider, extendTheme } from '@chakra-ui/react';
+
+const theme = extendTheme({
+  colors: {
+    brand: {
+      50: '#e4f3ff',
+      100: '#bde0ff',
+      200: '#93cdff',
+      300: '#68b9fe',
+      400: '#3ea6fe',
+      500: '#248dea',
+      600: '#186db7',
+      700: '#0e4e85',
+      800: '#033053',
+      900: '#001122',
+    },
+  },
+});
+
+export function ChakraUIProvider({ children }) {
+  return <ChakraProvider theme={theme}>{children}</ChakraProvider>;
+}`;
+      
+      await fs.writeFile(path.join(uiLibPath, 'providers.js'), chakraProviderContent);
+      break;
+      
+    case 'mui':
+      // Add Material UI setup
+      const muiThemeContent = `import { createTheme } from '@mui/material/styles';
+
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: '#1976d2',
+    },
+    secondary: {
+      main: '#dc004e',
+    },
+  },
+});
+
+export default theme;`;
+      
+      await fs.writeFile(path.join(uiLibPath, 'theme.js'), muiThemeContent);
+      break;
+      
+    case 'mantine':
+      // Add Mantine UI setup
+      const mantineProviderContent = `import React from 'react';
+import { MantineProvider, createTheme } from '@mantine/core';
+
+const theme = createTheme({
+  colors: {
+    brand: [
+      '#e4f3ff',
+      '#bde0ff',
+      '#93cdff',
+      '#68b9fe',
+      '#3ea6fe',
+      '#248dea',
+      '#186db7',
+      '#0e4e85',
+      '#033053',
+      '#001122',
+    ],
+  },
+  primaryColor: 'brand',
+});
+
+export function MantineUIProvider({ children }) {
+  return <MantineProvider theme={theme}>{children}</MantineProvider>;
+}`;
+      
+      await fs.writeFile(path.join(uiLibPath, 'providers.js'), mantineProviderContent);
+      break;
+  }
+  
+  console.log(`UI library setup for ${options.uiLibrary} completed.`);
+}
+
+async function generateAculConfig(projectPath, options) {
+  const aculConfig = `// Auth0 ACUL Configuration
+export default {
+  screens: {
+    ${options.screens.includes('login') ? "'login-id': { js: 'login-id.js', css: 'login-id.css' }," : ''}
+    ${options.screens.includes('signup') ? "'signup-id': { js: 'signup-id.js', css: 'signup-id.css' }," : ''}
+    ${options.screens.includes('password-reset') ? "'password-reset': { js: 'password-reset.js', css: 'password-reset.css' }," : ''}
+    ${options.screens.includes('mfa') ? "'mfa': { js: 'mfa.js', css: 'mfa.css' }," : ''}
+    ${options.screens.includes('passwordless') ? "'passwordless': { js: 'passwordless.js', css: 'passwordless.css' }," : ''}
+    ${options.screens.includes('passkey') ? "'passkey-enrollment': { js: 'passkey-enrollment.js', css: 'passkey-enrollment.css' }," : ''}
+  },
+  development: {
+    // For local development mode (mock Auth0)
+    mockData: {
+      domain: 'your-tenant.auth0.com',
+      clientId: 'your-client-id'
+    }
+  }
+};`;
+  
+  await fs.writeFile(path.join(projectPath, 'acul.config.js'), aculConfig);
+}
+
+async function generateScreenComponents(projectPath, options) {
+  // Generate basic index.html
+  const indexHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auth0 ACUL App</title>
+</head>
+<body>
+  <div id="content"></div>
+</body>
+</html>`;
+
+  await fs.writeFile(path.join(projectPath, 'src', 'index.html'), indexHtml);
+  
+  // Generate index.js - central entry point
+  const indexJs = `import React from 'react';
+import { createRoot } from 'react-dom/client';
+import './styles/global.css';
+
+// This file is used for local development only
+// Auth0 ACUL will use the specific screen files directly
+
+const App = () => {
+  return (
+    <div className="app">
+      <header>
+        <h1>Auth0 ACUL Development Environment</h1>
+      </header>
+      <main>
+        <p>This is a development environment for your Auth0 ACUL screens.</p>
+        <p>Auth0 will directly load your screen components when deployed.</p>
+        <h2>Available Screens:</h2>
+  
+  // Create debug-panel component
+  await generateDebugPanel(componentsDir);
+  
+  // Create styles directory
+  const stylesDir = path.join(projectPath, 'src', 'styles');
+  await fs.ensureDir(stylesDir);
+  
+  // Create basic CSS
+  const basicCss = `body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  padding: 0;
+  background-color: #f5f5f5;
+}
+
+.container {
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 20px;
+  background-color: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-top: 50px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+
+input {
+  width: 100%;
+  padding: 8px;
+  font-size: 16px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+button {
+  background-color: #0059c1;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  font-size: 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  width: 100%;
+}
+
+button:hover {
+  background-color: #003f87;
+}
+
+.error {
+  color: red;
+  margin-top: 10px;
+}
+
+.social-buttons {
+  margin-top: 20px;
+}
+
+.social-button {
+  background-color: #f5f5f5;
+  color: #333;
+  margin-bottom: 10px;
+}
+`;
+  
+  await fs.writeFile(path.join(stylesDir, 'basic.css'), basicCss);
+  
+  // Generate shared components that might be used across screens
+  await generateSharedComponents(componentsDir);
+  
+  // Generate utility functions
+  await generateUtilityFunctions(utilsDir);
+  
+  // Generate custom hooks for Auth0 integration
+  await generateCustomHooks(hooksDir);
+  
+  // Generate screen components
+  if (options.screens.includes('login')) {
+    await generateLoginScreen(screensDir);
+  }
+  
+  if (options.screens.includes('signup')) {
+    await generateSignupScreen(screensDir);
+  }
+  
+  if (options.screens.includes('password-reset')) {
+    await generatePasswordResetScreen(screensDir);
+  }
+  
+  if (options.screens.includes('mfa')) {
+    await generateMFAScreen(screensDir);
+  }
+  
+  if (options.screens.includes('passwordless')) {
+    await generatePasswordlessScreen(screensDir);
+  }
+  
+  if (options.screens.includes('passkey')) {
+    await generatePasskeyScreen(screensDir);
+  }
+  
+  // Generate main index file
+  await generateIndexFile(projectPath, options);
+}
+
+async function generateSharedComponents(componentsDir) {
+  // Create a shared button component
+  const buttonComponentContent = `import React from 'react';
+import '../styles/basic.css';
+
+const Button = ({ children, onClick, type = 'button', variant = 'primary', fullWidth = true, disabled = false }) => {
+  const buttonClass = \`\${variant === 'social' ? 'social-button' : ''} \${fullWidth ? 'w-full' : ''}\`;
+  
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      className={buttonClass}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+};
+
+export default Button;
+`;
+
+  await fs.ensureDir(path.join(componentsDir, 'button'));
+  await fs.writeFile(path.join(componentsDir, 'button', 'index.jsx'), buttonComponentContent);
+  
+  // Create a shared input component
+  const inputComponentContent = `import React from 'react';
+import '../styles/basic.css';
+
+const Input = ({ 
+  label, 
+  type = 'text', 
+  id, 
+  name, 
+  value, 
+  onChange, 
+  required = false, 
+  placeholder = '', 
+  error = '' 
+}) => {
+  return (
+    <div className="form-group">
+      {label && <label htmlFor={id}>{label}</label>}
+      <input
+        type={type}
+        id={id}
+        name={name}
+        value={value}
+        onChange={onChange}
+        required={required}
+        placeholder={placeholder}
+        className={error ? 'error-input' : ''}
+      />
+      {error && <div className="error">{error}</div>}
+    </div>
+  );
+};
+
+export default Input;
+`;
+
+  await fs.ensureDir(path.join(componentsDir, 'input'));
+  await fs.writeFile(path.join(componentsDir, 'input', 'index.jsx'), inputComponentContent);
+}
+
+async function generateUtilityFunctions(utilsDir) {
+  // Create authentication utility functions
+  const authUtilsContent = `// Authentication utility functions
+
+// Validate email format
+export const validateEmail = (email) => {
+  const re = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
+  return re.test(email);
+};
+
+// Validate password strength
+export const validatePassword = (password) => {
+  // At least 8 characters, with at least one uppercase, one lowercase, and one number
+  const re = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)[a-zA-Z\\d]{8,}$/;
+  return re.test(password);
+};
+
+// Format error message from Auth0
+export const formatErrorMessage = (error) => {
+  if (!error) return '';
+  
+  if (typeof error === 'string') return error;
+  
+  if (error.error_description) return error.error_description;
+  if (error.message) return error.message;
+  
+  return 'An unknown error occurred';
+};
+`;
+
+  await fs.writeFile(path.join(utilsDir, 'auth-utils.js'), authUtilsContent);
+}
+
+async function generateCustomHooks(hooksDir) {
+  // Create a hook for form handling
+  const useFormHookContent = `import { useState } from 'react';
+
+export const useForm = (initialValues = {}) => {
+  const [values, setValues] = useState(initialValues);
+  const [errors, setErrors] = useState({});
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setValues({
+      ...values,
+      [name]: value,
+    });
+  };
+
+  const validate = (validationRules) => {
+    const newErrors = {};
+    let isValid = true;
+
+    Object.keys(validationRules).forEach((fieldName) => {
+      const value = values[fieldName];
+      const validation = validationRules[fieldName];
+
+      const error = validation(value);
+      if (error) {
+        newErrors[fieldName] = error;
+        isValid = false;
+      }
+    });
+
+    setErrors(newErrors);
+    return isValid;
+  };
+
+  const resetForm = () => {
+    setValues(initialValues);
+    setErrors({});
+  };
+
+  return {
+    values,
+    errors,
+    handleChange,
+    validate,
+    resetForm,
+    setValues,
+    setErrors,
+  };
+};
+`;
+
+  await fs.writeFile(path.join(hooksDir, 'useForm.js'), useFormHookContent);
+}
+
+async function generateLoginScreen(screensDir) {
+  const loginIndex = `import React from 'react';
+import { createRoot } from 'react-dom/client';
+import LoginForm from './LoginForm';
+import SocialLogins from './SocialLogins';
+import '../../styles/basic.css';
+
+// This component will be loaded by Auth0 ACUL
+const LoginIdScreen = ({ context }) => {
+  return (
+    <div className="login-screen">
+      <h1>Welcome Back</h1>
+      <LoginForm acul={context} />
+      <SocialLogins acul={context} />
+    </div>
+  );
+};
+
+// For Auth0 ACUL, we need to expose the component properly
+// This sets up the component as Auth0 ACUL expects
+const container = document.getElementById('content');
+const root = createRoot(container);
+root.render(<LoginIdScreen />);
+
+export default LoginIdScreen;
+
+// This is critical: Auth0 ACUL directly looks for this
+if (typeof window !== 'undefined') {
+  window.default = LoginIdScreen;
+}`;
+
+  const loginForm = `import React, { useState } from 'react';
+
+const LoginForm = ({ acul }) => {
+  const [email, setEmail] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // In a real implementation, this would use the Auth0 ACUL SDK
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    
+    // Simulate ACUL SDK login submission
+    setTimeout(() => {
+      setIsSubmitting(false);
+      // Navigate to password screen would happen here in real implementation
+      console.log('Submitted email:', email);
+    }, 1000);
+  };
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className="form-group">
+        <label htmlFor="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          className="form-control"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+      </div>
+      <button type="submit" className="btn" disabled={isSubmitting}>
+        {isSubmitting ? 'Submitting...' : 'Continue'}
+      </button>
+    </form>
+  );
+};
+
+export default LoginForm;`;
+
+  const socialLogins = `import React from 'react';
+
+const SocialLogins = ({ acul }) => {
+  // In a real implementation, social connections would be retrieved from Auth0 context
+  const socialConnections = [
+    { name: 'google', displayName: 'Google' },
+    { name: 'facebook', displayName: 'Facebook' },
+    { name: 'apple', displayName: 'Apple' },
+  ];
+  
+  const handleSocialLogin = (connection) => {
+    // In a real implementation, this would trigger the social login flow
+    console.log('Social login with:', connection);
+  };
+  
+  return (
+    <div className="social-login-buttons">
+      <p>Or continue with:</p>
+      <div className="social-buttons">
+        {socialConnections.map((connection) => (
+          <button
+            key={connection.name}
+            className="btn social-btn"
+            onClick={() => handleSocialLogin(connection.name)}
+          >
+            {connection.displayName}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default SocialLogins;`;
+
+  await fs.writeFile(path.join(projectPath, 'src', 'screens', 'login-id', 'index.jsx'), loginIndex);
+  await fs.writeFile(path.join(projectPath, 'src', 'screens', 'login-id', 'LoginForm.jsx'), loginForm);
+  await fs.writeFile(path.join(projectPath, 'src', 'screens', 'login-id', 'SocialLogins.jsx'), socialLogins);
+}
+
+async function generateSignupScreen(projectPath) {
+  const signupIndex = `import React from 'react';
+import { createRoot } from 'react-dom/client';
+import SignupForm from './SignupForm';
+import '../../styles/global.css';
+
+// This component will be loaded by Auth0 ACUL
+const SignupIdScreen = ({ context }) => {
+  return (
+    <div className="signup-screen">
+      <h1>Create Your Account</h1>
+      <SignupForm acul={context} />
+      <p className="login-link">
+        Already have an account? <a href="#">Log in</a>
+      </p>
+    </div>
+  );
+};
+
+// For Auth0 ACUL, we need to expose the component properly
+const container = document.getElementById('content');
+const root = createRoot(container);
+root.render(<SignupIdScreen />);
+
+export default SignupIdScreen;
+
+// This is critical: Auth0 ACUL directly looks for this
+if (typeof window !== 'undefined') {
+  window.default = SignupIdScreen;
+}`;
+
+  const signupForm = `import React, { useState } from 'react';
+
+const SignupForm = ({ acul }) => {
+  const [email, setEmail] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // In a real implementation, this would use the Auth0 ACUL SDK
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    
+    // Simulate ACUL SDK signup submission
+    setTimeout(() => {
+      setIsSubmitting(false);
+      // Navigate to password screen would happen here in real implementation
+      console.log('Submitted email for signup:', email);
+    }, 1000);
+  };
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className="form-group">
+        <label htmlFor="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          className="form-control"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+      </div>
+      <button type="submit" className="btn" disabled={isSubmitting}>
+        {isSubmitting ? 'Creating account...' : 'Sign Up'}
+      </button>
+    </form>
+  );
+};
+
+export default SignupForm;`;
+
+  await fs.writeFile(path.join(projectPath, 'src', 'screens', 'signup-id', 'index.jsx'), signupIndex);
+  await fs.writeFile(path.join(projectPath, 'src', 'screens', 'signup-id', 'SignupForm.jsx'), signupForm);
+}
+
+async function generatePasswordResetScreen(projectPath) {
+  const resetIndex = `import React from 'react';
+import { createRoot } from 'react-dom/client';
+import ResetForm from './ResetForm';
+import '../../styles/global.css';
+
+// This component will be loaded by Auth0 ACUL
+const PasswordResetScreen = ({ context }) => {
+  return (
+    <div className="password-reset-screen">
+      <h1>Reset Your Password</h1>
+      <p>Enter your email address and we'll send you a link to reset your password.</p>
+      <ResetForm acul={context} />
+    </div>
+  );
+};
+
+// For Auth0 ACUL, we need to expose the component properly
+const container = document.getElementById('content');
+const root = createRoot(container);
+root.render(<PasswordResetScreen />);
+
+export default PasswordResetScreen;
+
+// This is critical: Auth0 ACUL directly looks for this
+if (typeof window !== 'undefined') {
+  window.default = PasswordResetScreen;
+}`;
+
+  const resetForm = `import React, { useState } from 'react';
+
+const ResetForm = ({ acul }) => {
+  const [email, setEmail] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  
+  // In a real implementation, this would use the Auth0 ACUL SDK
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    
+    // Simulate ACUL SDK password reset submission
+    setTimeout(() => {
+      setIsSubmitting(false);
+      setIsSubmitted(true);
+      console.log('Submitted password reset for:', email);
+    }, 1000);
+  };
+  
+  if (isSubmitted) {
+    return (
+      <div className="success-message">
+        <p>Check your email for a link to reset your password.</p>
+        <p>If it doesn't appear within a few minutes, check your spam folder.</p>
+      </div>
+    );
+  }
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className="form-group">
+        <label htmlFor="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          className="form-control"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+      </div>
+      <button type="submit" className="btn" disabled={isSubmitting}>
+        {isSubmitting ? 'Submitting...' : 'Send Reset Link'}
+      </button>
+    </form>
+  );
+};
+
+export default ResetForm;`;
+
+  await fs.writeFile(path.join(projectPath, 'src', 'screens', 'password-reset', 'index.jsx'), resetIndex);
+  await fs.writeFile(path.join(projectPath, 'src', 'screens', 'password-reset', 'ResetForm.jsx'), resetForm);
+}
+
+async function generatePasskeyScreen(projectPath) {
+  const passkeyIndex = `import React from 'react';
+import { createRoot } from 'react-dom/client';
+import PasskeyEnrollment from './PasskeyEnrollment';
+import '../../styles/global.css';
+
+// This component will be loaded by Auth0 ACUL
+const PasskeyEnrollmentScreen = ({ context }) => {
+  return (
+    <div className="passkey-enrollment-screen">
+      <h1>Set Up Passkey</h1>
+      <p>Set up a passkey for a faster, more secure sign-in without passwords.</p>
+      <PasskeyEnrollment acul={context} />
+    </div>
+  );
+};
+
+// For Auth0 ACUL, we need to expose the component properly
+const container = document.getElementById('content');
+const root = createRoot(container);
+root.render(<PasskeyEnrollmentScreen />);
+
+export default PasskeyEnrollmentScreen;
+
+// This is critical: Auth0 ACUL directly looks for this
+if (typeof window !== 'undefined') {
+  window.default = PasskeyEnrollmentScreen;
+}`;
+
+  const passkeyEnrollment = `import React, { useState } from 'react';
+
+const PasskeyEnrollment = ({ acul }) => {
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const [isEnrolled, setIsEnrolled] = useState(false);
+  
+  // In a real implementation, this would use the Auth0 ACUL SDK
+  const handleEnrollPasskey = () => {
+    setIsEnrolling(true);
+    
+    // Simulate ACUL SDK passkey enrollment
+    setTimeout(() => {
+      setIsEnrolling(false);
+      setIsEnrolled(true);
+      console.log('Passkey enrolled successfully');
+    }, 2000);
+  };
+  
+  const handleSkip = () => {
+    console.log('Passkey enrollment skipped');
+  };
+  
+  if (isEnrolled) {
+    return (
+      <div className="success-message">
+        <h2>Passkey Enrolled Successfully!</h2>
+        <p>You can now sign in quickly and securely using your passkey.</p>
+        <button className="btn" onClick={() => console.log('Continue to app')}>
+          Continue
+        </button>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="passkey-enrollment">
+      <div className="passkey-benefits">
+        <ul>
+          <li>Sign in without typing a password</li>
+          <li>More secure than passwords</li>
+          <li>Works across your devices</li>
+        </ul>
+      </div>
+      
+      <div className="passkey-actions">
+        <button 
+          className="btn primary-btn" 
+          onClick={handleEnrollPasskey}
+          disabled={isEnrolling}
+        >
+          {isEnrolling ? 'Setting up...' : 'Set Up Passkey'}
+        </button>
+        
+        <button className="btn secondary-btn" onClick={handleSkip}>
+          Skip for now
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default PasskeyEnrollment;`;
+
+  await fs.writeFile(path.join(projectPath, 'src', 'screens', 'passkey-enrollment', 'index.jsx'), passkeyIndex);
+  await fs.writeFile(path.join(projectPath, 'src', 'screens', 'passkey-enrollment', 'PasskeyEnrollment.jsx'), passkeyEnrollment);
+}
+
+async function generateSharedComponents(projectPath, options) {
+  // Create AculDebugPanel component for development
+  if (options.localDev) {
+    const debugPanel = `import React, { useState } from 'react';
+
+const AculDebugPanel = ({ context }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  if (!context) {
+    return null;
+  }
+  
+  return (
+    <div className="acul-debug-panel">
+      <button 
+        className="debug-toggle" 
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          position: 'fixed',
+          bottom: '10px',
+          right: '10px',
+          zIndex: 9999,
+          padding: '8px 12px',
+          background: '#0056b3',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: 'pointer'
+        }}
+      >
+        {isOpen ? 'Hide Debug Panel' : 'Show Debug Panel'}
+      </button>
+      
+      {isOpen && (
+        <div 
+          className="debug-content"
+          style={{
+            position: 'fixed',
+            bottom: '50px',
+            right: '10px',
+            width: '400px',
+            maxHeight: '500px',
+            overflowY: 'auto',
+            background: '#f0f0f0',
+            border: '1px solid #ccc',
+            padding: '15px',
+            zIndex: 9999,
+            borderRadius: '4px',
+            boxShadow: '0 0 10px rgba(0,0,0,0.2)'
+          }}
+        >
+          <h3>Auth0 ACUL Context</h3>
+          <pre
+            style={{
+              whiteSpace: 'pre-wrap',
+              fontSize: '12px',
+              backgroundColor: '#1e1e1e',
+              color: '#d4d4d4',
+              padding: '10px',
+              borderRadius: '4px',
+              overflowX: 'auto'
+            }}
+          >
+            {JSON.stringify(context, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AculDebugPanel;`;
+
+    await fs.writeFile(path.join(projectPath, 'src', 'components', 'AculDebugPanel.jsx'), debugPanel);
+    
+    // Add a mock ACUL service for local development
+    const mockAculService = `// Mock ACUL service for local development
+class MockAculService {
+  constructor() {
+    this.domain = 'your-tenant.auth0.com';
+    this.clientId = 'your-client-id';
+  }
+  
+  getContext(screenName) {
+    // Return mock context based on screen name
+    switch(screenName) {
+      case 'login-id':
+        return this.getLoginContext();
+      case 'signup-id':
+        return this.getSignupContext();
+      case 'password-reset':
+        return this.getPasswordResetContext();
+      case 'passkey-enrollment':
+        return this.getPasskeyContext();
+      default:
+        return {};
+    }
+  }
+  
+  getLoginContext() {
+    return {
+      screen: {
+        name: 'login-id',
+        data: {
+          alternateLoginMethods: ['google', 'facebook', 'apple'],
+          passkey: {
+            public_key: {
+              challenge: 'mock-challenge-string'
+            }
+          }
+        }
+      },
+      transaction: {
+        state: 'initial',
+        lastError: null
+      }
+    };
+  }
+  
+  getSignupContext() {
+    return {
+      screen: {
+        name: 'signup-id',
+        data: {
+          supportedFields: ['email', 'password', 'name']
+        }
+      },
+      transaction: {
+        state: 'initial',
+        lastError: null
+      }
+    };
+  }
+  
+  getPasswordResetContext() {
+    return {
+      screen: {
+        name: 'password-reset',
+        data: {}
+      },
+      transaction: {
+        state: 'initial',
+        lastError: null
+      }
+    };
+  }
+  
+  getPasskeyContext() {
+    return {
+      screen: {
+        name: 'passkey-enrollment',
+        data: {
+          user: {
+            email: 'user@example.com'
+          }
+        }
+      },
+      transaction: {
+        passkey: {
+          enabled: true
+        },
+        state: 'passkey_enrollment',
+        lastError: null
+      }
+    };
+  }
+}
+
+export const mockAculService = new MockAculService();`;
+
+    await fs.writeFile(path.join(projectPath, 'src', 'utils', 'mockAculService.js'), mockAculService);
+  }
+}
+
+async function generateTailwindConfig(projectPath) {
+  // Write tailwind.config.js
+  await fs.writeFile(path.join(projectPath, 'tailwind.config.js'), tailwindConfig);
+  
+  // Write postcss.config.js - make sure to include tailwindcss plugin
+  await fs.writeFile(path.join(projectPath, 'postcss.config.js'), postcssConfig);
+  
+  // Create a base CSS file with Tailwind directives
+  const tailwindCss = `@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles below */
+`;
+  
+  await fs.writeFile(path.join(projectPath, 'src', 'styles', 'tailwind.css'), tailwindCss);
+}
+
+module.exports = {
+  generateProject
+};

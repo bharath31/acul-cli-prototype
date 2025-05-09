@@ -1,0 +1,26 @@
+{
+  "name": "@auth0/acul-cli-prototype",
+  "version": "0.1.0",
+  "description": "Prototype CLI tool for Auth0 ACUL project initialization",
+  "main": "index.js",
+  "bin": {
+    "acul": "./bin/acul.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "auth0",
+    "acul",
+    "cli"
+  ],
+  "author": "Auth0",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^9.4.1",
+    "fs-extra": "^10.1.0",
+    "inquirer": "^8.2.4",
+    "ora": "^5.4.1"
+  }
+}
